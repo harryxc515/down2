@@ -40,45 +40,65 @@ const extractUrls = (text) => {
   return text.match(urlRegex) || [];
 };
 
-// deeply search object for any url-like string that looks like a media file
-const deepFindMediaUrl = (obj, depth = 0) => {
-  if (depth > 6 || !obj) return null;
+// check if a string looks like a downloadable media url
+// covers: direct file extensions, CDN urls (instagram, pinterest, youtube), signed urls
+const isMediaUrl = (str) => {
+  if (typeof str !== "string" || !str.startsWith("http")) return false;
+  // direct file extension match
+  if (/\.(mp4|webm|mov|m4v|avi|mkv|flv|3gp|jpg|jpeg|png|gif|webp)(\?|$)/i.test(str)) return true;
+  // instagram CDN (cdninstagram.com, fbcdn.net)
+  if (/cdninstagram\.com|fbcdn\.net/i.test(str)) return true;
+  // pinterest CDN
+  if (/pinimg\.com|pinterest\.com.*\/videos?\//i.test(str)) return true;
+  // youtube direct / googlevideo CDN
+  if (/googlevideo\.com|youtube\.com\/videoplayback/i.test(str)) return true;
+  // generic: long signed url with common video params
+  if (/bytestart|videoplayback|mime=video|content-type=video|\.mp4/i.test(str)) return true;
+  return false;
+};
+
+// collect ALL media urls from the response, return the longest/best one
+const collectMediaUrls = (obj, found = [], depth = 0) => {
+  if (depth > 8 || !obj) return found;
 
   if (typeof obj === "string") {
-    if (/^https?:\/\/.+\.(mp4|webm|mov|m4v|avi|mkv|jpg|jpeg|png|gif|webp)/i.test(obj)) return obj;
-    if (/^https?:\/\/.+\?/.test(obj) && obj.includes("video")) return obj;
-    return null;
+    if (isMediaUrl(obj)) found.push(obj);
+    return found;
   }
 
   if (Array.isArray(obj)) {
-    for (const item of obj) {
-      const found = deepFindMediaUrl(item, depth + 1);
-      if (found) return found;
-    }
-    return null;
+    for (const item of obj) collectMediaUrls(item, found, depth + 1);
+    return found;
   }
 
   if (typeof obj === "object") {
-    // check common key names first in priority order
+    // priority keys scanned first
     const priorityKeys = [
       "url", "download_url", "downloadUrl", "videoUrl", "video_url",
       "media_url", "mediaUrl", "src", "source", "link", "href",
       "high", "hd", "sd", "low", "play_url", "stream_url",
+      "video", "image", "thumbnail", "cover", "poster",
     ];
     for (const key of priorityKeys) {
-      if (obj[key]) {
-        const found = deepFindMediaUrl(obj[key], depth + 1);
-        if (found) return found;
-      }
+      if (obj[key] != null) collectMediaUrls(obj[key], found, depth + 1);
     }
-    // fallback: scan all keys
-    for (const val of Object.values(obj)) {
-      const found = deepFindMediaUrl(val, depth + 1);
-      if (found) return found;
+    // then scan remaining keys not already covered
+    for (const [key, val] of Object.entries(obj)) {
+      if (!priorityKeys.includes(key)) collectMediaUrls(val, found, depth + 1);
     }
   }
 
-  return null;
+  return found;
+};
+
+const deepFindMediaUrl = (obj) => {
+  const all = collectMediaUrls(obj);
+  if (!all.length) return null;
+  // prefer mp4/video urls over images, prefer longer urls (more specific)
+  const videos = all.filter(u => /mp4|webm|mov|video|cdninstagram|fbcdn|googlevideo/i.test(u));
+  const pool = videos.length ? videos : all;
+  // return longest url (usually highest quality / most specific)
+  return pool.reduce((a, b) => (a.length >= b.length ? a : b));
 };
 
 const deepFindTitle = (obj, depth = 0) => {
@@ -105,9 +125,15 @@ const fetchDownload = async (url) => {
 
     const raw = response.data;
 
-    // try to extract media url from any structure the api returns
+    // always log raw for debugging - helps identify new response shapes
+    console.log("[downloader] raw api response:", JSON.stringify(raw).slice(0, 800));
+
     const mediaUrl = deepFindMediaUrl(raw);
     const title = deepFindTitle(raw);
+
+    if (!mediaUrl) {
+      console.warn("[downloader] no media url found in response. full raw:", JSON.stringify(raw));
+    }
 
     return {
       success: true,
@@ -121,6 +147,7 @@ const fetchDownload = async (url) => {
       err.response?.data?.error ||
       err.message ||
       "failed to fetch";
+    console.error("[downloader] fetch error:", errMsg);
     return { success: false, error: errMsg };
   }
 };
