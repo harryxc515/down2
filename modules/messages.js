@@ -3,15 +3,12 @@ const messages = {
     `<blockquote>welcome${firstName ? ", " + firstName : ""}
 
 paste a link from youtube, instagram or pinterest and i will download the media for you.
-
 supported platforms:
 - youtube  (videos, shorts, reels)
 - instagram  (reels, posts, stories)
 - pinterest  (videos, images)
-
 just send a link to get started.
 tap help or how to use if you need guidance.</blockquote>`,
-
   processing: (platform) =>
     `<blockquote>downloading from ${platform}
 please wait...</blockquote>`,
