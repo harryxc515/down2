@@ -1,0 +1,20 @@
+{
+  "name": "telegram-downloader-bot",
+  "version": "1.0.0",
+  "description": "Telegram Social Media Downloader Bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js"
+  },
+  "dependencies": {
+    "node-telegram-bot-api": "^0.66.0",
+    "mongoose": "^8.0.3",
+    "axios": "^1.6.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
